@@ -5,6 +5,7 @@ import { TanStackDevtools } from "@tanstack/react-devtools"
 import appCss from "../styles.css?url"
 import { Navbar } from "@/components/app/navbar"
 import { AuthProvider } from "@/providers/auth-provider"
+import { SoundPreferencesProvider } from "@/providers/sound-preferences-provider"
 import { ThemeProvider } from "@/providers/theme-provider"
 
 export const Route = createRootRoute({
@@ -39,12 +40,14 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <ThemeProvider>
-          <AuthProvider>
-            <div className="min-h-svh">
-              <Navbar />
-              <main className="mx-auto max-w-5xl p-4">{children}</main>
-            </div>
-          </AuthProvider>
+          <SoundPreferencesProvider>
+            <AuthProvider>
+              <div className="min-h-svh">
+                <Navbar />
+                <main className="mx-auto max-w-5xl p-4">{children}</main>
+              </div>
+            </AuthProvider>
+          </SoundPreferencesProvider>
         </ThemeProvider>
         <TanStackDevtools
           config={{

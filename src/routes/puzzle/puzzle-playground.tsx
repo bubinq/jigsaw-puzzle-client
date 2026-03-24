@@ -16,6 +16,7 @@ import {
   pieceByIdMap,
   syncPiecePositionsFromGroups,
 } from "@/lib/puzzle-game"
+import { useSoundPreferences } from "@/hooks/use-sound-preferences"
 
 export type PuzzlePlaygroundProps = {
   pieces: Array<PuzzlePiece>
@@ -53,6 +54,7 @@ export function PuzzlePlayground({
   solved,
   onSolved,
 }: PuzzlePlaygroundProps) {
+  const { pieceMatchSoundEnabled } = useSoundPreferences()
   const pieceMap = React.useMemo(() => pieceByIdMap(pieces), [pieces])
   const [activeGroupId, setActiveGroupId] = React.useState<string | null>(null)
   const [dragStartPosition, setDragStartPosition] = React.useState<Point | null>(null)
@@ -60,6 +62,7 @@ export function PuzzlePlayground({
   const pendingPositionRef = React.useRef<Point | null>(null)
   const dragRafRef = React.useRef<number | null>(null)
   const overlayRef = React.useRef<HTMLDivElement | null>(null)
+  const mergeAudioRef = React.useRef<HTMLAudioElement | null>(null)
 
   const MATCH_THRESHOLD = 6
 
@@ -68,6 +71,17 @@ export function PuzzlePlayground({
     if (!element) return
     element.style.transform = `translate3d(${position.left}px, ${position.top}px, 0)`
   }, [])
+
+  const playMergeSound = React.useCallback(() => {
+    if (!pieceMatchSoundEnabled || typeof window === "undefined") return
+    const audio = mergeAudioRef.current ?? new Audio("/match.mp3")
+    if (!mergeAudioRef.current) {
+      audio.preload = "auto"
+      mergeAudioRef.current = audio
+    }
+    audio.currentTime = 0
+    void audio.play().catch(() => {})
+  }, [pieceMatchSoundEnabled])
 
   const endDrag = React.useCallback(() => {
     const activeDrag = activeDragRef.current
@@ -126,6 +140,7 @@ export function PuzzlePlayground({
       )
       nextGroups = result.groups
       nextPieces = result.pieces
+      playMergeSound()
     } else {
       nextGroups = moveGroup(
         groups,
@@ -143,7 +158,7 @@ export function PuzzlePlayground({
     pendingPositionRef.current = null
     setActiveGroupId(null)
     setDragStartPosition(null)
-  }, [groups, pieceMap, pieces, playgroundRect, setGroups, setPieces])
+  }, [groups, pieceMap, pieces, playMergeSound, playgroundRect, setGroups, setPieces])
 
   React.useEffect(() => {
     if (solved) return

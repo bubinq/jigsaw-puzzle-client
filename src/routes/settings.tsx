@@ -4,10 +4,13 @@ import { RequireAuth } from "@/components/auth/require-auth"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/hooks/use-auth"
+import { useSoundPreferences } from "@/hooks/use-sound-preferences"
 import { useTheme } from "@/hooks/use-theme"
 import { apiSameOriginUrl } from "@/lib/api/client"
+import { Switch } from "@/components/ui/switch"
 
 const DEFAULT_AVATAR_DATA_URI =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' fill='%23e5e7eb'/><circle cx='32' cy='24' r='12' fill='%239ca3af'/><path d='M12 58c3-12 13-18 20-18s17 6 20 18' fill='%239ca3af'/></svg>"
@@ -28,6 +31,7 @@ export const Route = createFileRoute("/settings")({
 function SettingsPage() {
   const { user, refresh } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const { pieceMatchSoundEnabled, setPieceMatchSoundEnabled } = useSoundPreferences()
   const [uploading, setUploading] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
@@ -95,6 +99,21 @@ function SettingsPage() {
               <Button variant="outline" size="sm" onClick={toggleTheme}>
                 {theme === "dark" ? "Switch to light" : "Switch to dark"}
               </Button>
+            </div>
+            <Separator />
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="piece-match-sound">Piece match sound</Label>
+                <p className="text-sm text-muted-foreground">
+                  Play a snap sound when puzzle pieces connect.
+                </p>
+              </div>
+              <Switch
+                id="piece-match-sound"
+                checked={pieceMatchSoundEnabled}
+                onCheckedChange={setPieceMatchSoundEnabled}
+                aria-label="Toggle piece match sound"
+              />
             </div>
           </CardContent>
         </Card>

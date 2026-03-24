@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import type { PieceGroup, PuzzlePiece } from "@/lib/puzzle-game"
 import {
   arePiecesMatching,
   bringGroupToFront,
@@ -40,6 +41,52 @@ function pathBounds(pathData: string): { minX: number; minY: number; maxX: numbe
     maxY = Math.max(maxY, y)
   }
   return { minX, minY, maxX, maxY }
+}
+
+function renderBoundsAt(
+  group: PieceGroup,
+  piecesById: Map<string, PuzzlePiece>,
+  left: number,
+  top: number,
+  predicate: (piece: PuzzlePiece) => boolean = () => true
+): { left: number; top: number; width: number; height: number } {
+  let minLeft = Number.POSITIVE_INFINITY
+  let minTop = Number.POSITIVE_INFINITY
+  let maxRight = Number.NEGATIVE_INFINITY
+  let maxBottom = Number.NEGATIVE_INFINITY
+
+  for (const member of group.members) {
+    const piece = piecesById.get(member.pieceId)
+    if (!piece || !predicate(piece)) continue
+    const pieceLeft = left + member.offsetLeft + piece.renderOffsetX
+    const pieceTop = top + member.offsetTop + piece.renderOffsetY
+    minLeft = Math.min(minLeft, pieceLeft)
+    minTop = Math.min(minTop, pieceTop)
+    maxRight = Math.max(maxRight, pieceLeft + piece.renderWidth)
+    maxBottom = Math.max(maxBottom, pieceTop + piece.renderHeight)
+  }
+
+  return {
+    left: minLeft,
+    top: minTop,
+    width: maxRight - minLeft,
+    height: maxBottom - minTop,
+  }
+}
+
+function buildGroupFromPieces(pieces: Array<PuzzlePiece>): PieceGroup {
+  const anchor = pieces[0]
+  return {
+    id: "g1",
+    left: 0,
+    top: 0,
+    stackOrder: 0,
+    members: pieces.map((piece) => ({
+      pieceId: piece.id,
+      offsetLeft: piece.solvedLeft - anchor.solvedLeft,
+      offsetTop: piece.solvedTop - anchor.solvedTop,
+    })),
+  }
 }
 
 describe("deriveGridForPieceCount", () => {
@@ -366,9 +413,9 @@ describe("group merge helpers", () => {
     expect(next.find((g) => g.id === "g2")?.stackOrder).toBe(4)
   })
 
-  it("clampGroupPositionWithinPlayground keeps rendered bounds inside playground", () => {
+  it("keeps a single piece past the left border until half of it crosses", () => {
     const board = { left: 0, top: 0, width: 200, height: 100 }
-    const [piece] = buildPuzzlePieces(1, 2, board)
+    const [piece] = buildPuzzlePieces(2, 2, board)
     const group = {
       id: "g1",
       left: 0,
@@ -379,11 +426,200 @@ describe("group merge helpers", () => {
     const piecesById = new Map([[piece.id, piece]])
     const playground = { left: 0, top: 0, width: 220, height: 120 }
 
-    const next = clampGroupPositionWithinPlayground(group, piecesById, 260, 180, playground)
+    const justBeforeThresholdLeft =
+      playground.left - (piece.renderOffsetX + piece.renderWidth / 2) + 1
+    const justBeforeThreshold = clampGroupPositionWithinPlayground(
+      group,
+      piecesById,
+      justBeforeThresholdLeft,
+      0,
+      playground
+    )
+    expect(justBeforeThreshold.left).toBeCloseTo(justBeforeThresholdLeft, 5)
 
-    expect(next.left + piece.renderOffsetX + piece.renderWidth).toBeLessThanOrEqual(playground.width)
-    expect(next.top + piece.renderOffsetY + piece.renderHeight).toBeLessThanOrEqual(playground.height)
-    expect(next.left + piece.renderOffsetX).toBeGreaterThanOrEqual(playground.left)
-    expect(next.top + piece.renderOffsetY).toBeGreaterThanOrEqual(playground.top)
+    const thresholdLeft =
+      playground.left - (piece.renderOffsetX + piece.renderWidth / 2)
+    const snapped = clampGroupPositionWithinPlayground(
+      group,
+      piecesById,
+      thresholdLeft,
+      0,
+      playground
+    )
+    expect(snapped.left).toBeCloseTo(playground.left - piece.renderOffsetX, 5)
+  })
+
+  it("keeps a single piece past the top border until half of it crosses", () => {
+    const board = { left: 0, top: 0, width: 200, height: 100 }
+    const [piece] = buildPuzzlePieces(2, 2, board)
+    const group = {
+      id: "g1",
+      left: 0,
+      top: 0,
+      stackOrder: 0,
+      members: [{ pieceId: piece.id, offsetLeft: 0, offsetTop: 0 }],
+    }
+    const piecesById = new Map([[piece.id, piece]])
+    const playground = { left: 0, top: 0, width: 220, height: 120 }
+
+    const justBeforeThresholdTop =
+      playground.top - (piece.renderOffsetY + piece.renderHeight / 2) + 1
+    const justBeforeThreshold = clampGroupPositionWithinPlayground(
+      group,
+      piecesById,
+      0,
+      justBeforeThresholdTop,
+      playground
+    )
+    expect(justBeforeThreshold.top).toBeCloseTo(justBeforeThresholdTop, 5)
+
+    const thresholdTop =
+      playground.top - (piece.renderOffsetY + piece.renderHeight / 2)
+    const snapped = clampGroupPositionWithinPlayground(
+      group,
+      piecesById,
+      0,
+      thresholdTop,
+      playground
+    )
+    expect(snapped.top).toBeCloseTo(playground.top - piece.renderOffsetY, 5)
+  })
+
+  it("snaps a top-overflowing group by its bottom row only", () => {
+    const pieces = buildPuzzlePieces(2, 2, { left: 0, top: 0, width: 200, height: 200 })
+    const group = buildGroupFromPieces(pieces)
+    const piecesById = new Map(pieces.map((piece) => [piece.id, piece] as const))
+    const playground = { left: 0, top: 0, width: 220, height: 220 }
+    const bottomRowBounds = renderBoundsAt(group, piecesById, 0, 0, (piece) => piece.row === 1)
+
+    const droppedTop =
+      playground.top - (bottomRowBounds.top + bottomRowBounds.height / 2)
+    const next = clampGroupPositionWithinPlayground(
+      group,
+      piecesById,
+      0,
+      droppedTop,
+      playground
+    )
+    const snappedBottomRow = renderBoundsAt(
+      group,
+      piecesById,
+      next.left,
+      next.top,
+      (piece) => piece.row === 1
+    )
+    const topRow = renderBoundsAt(
+      group,
+      piecesById,
+      next.left,
+      next.top,
+      (piece) => piece.row === 0
+    )
+
+    expect(snappedBottomRow.top).toBeCloseTo(playground.top, 5)
+    expect(topRow.top).toBeLessThan(playground.top)
+  })
+
+  it("snaps a bottom-overflowing group by its top row only", () => {
+    const pieces = buildPuzzlePieces(2, 2, { left: 0, top: 0, width: 200, height: 200 })
+    const group = buildGroupFromPieces(pieces)
+    const piecesById = new Map(pieces.map((piece) => [piece.id, piece] as const))
+    const playground = { left: 0, top: 0, width: 220, height: 220 }
+    const topRowBounds = renderBoundsAt(group, piecesById, 0, 0, (piece) => piece.row === 0)
+    const playgroundBottom = playground.top + playground.height
+
+    const droppedTop =
+      playgroundBottom - (topRowBounds.top + topRowBounds.height / 2)
+    const next = clampGroupPositionWithinPlayground(
+      group,
+      piecesById,
+      0,
+      droppedTop,
+      playground
+    )
+    const snappedTopRow = renderBoundsAt(
+      group,
+      piecesById,
+      next.left,
+      next.top,
+      (piece) => piece.row === 0
+    )
+    const bottomRow = renderBoundsAt(
+      group,
+      piecesById,
+      next.left,
+      next.top,
+      (piece) => piece.row === 1
+    )
+
+    expect(snappedTopRow.top + snappedTopRow.height).toBeCloseTo(playgroundBottom, 5)
+    expect(bottomRow.top + bottomRow.height).toBeGreaterThan(playgroundBottom)
+  })
+
+  it("snaps a sideways-overflowing group by the opposite edge column only", () => {
+    const pieces = buildPuzzlePieces(2, 2, { left: 0, top: 0, width: 200, height: 200 })
+    const group = buildGroupFromPieces(pieces)
+    const piecesById = new Map(pieces.map((piece) => [piece.id, piece] as const))
+    const playground = { left: 0, top: 0, width: 220, height: 220 }
+    const playgroundRight = playground.left + playground.width
+    const rightColumnBounds = renderBoundsAt(group, piecesById, 0, 0, (piece) => piece.col === 1)
+    const leftColumnBounds = renderBoundsAt(group, piecesById, 0, 0, (piece) => piece.col === 0)
+
+    const leftDropped =
+      playground.left - (rightColumnBounds.left + rightColumnBounds.width / 2)
+    const leftSnapped = clampGroupPositionWithinPlayground(
+      group,
+      piecesById,
+      leftDropped,
+      0,
+      playground
+    )
+    const snappedRightColumn = renderBoundsAt(
+      group,
+      piecesById,
+      leftSnapped.left,
+      leftSnapped.top,
+      (piece) => piece.col === 1
+    )
+    const remainingLeftColumn = renderBoundsAt(
+      group,
+      piecesById,
+      leftSnapped.left,
+      leftSnapped.top,
+      (piece) => piece.col === 0
+    )
+    expect(snappedRightColumn.left).toBeCloseTo(playground.left, 5)
+    expect(remainingLeftColumn.left).toBeLessThan(playground.left)
+
+    const rightDropped =
+      playgroundRight - (leftColumnBounds.left + leftColumnBounds.width / 2)
+    const rightSnapped = clampGroupPositionWithinPlayground(
+      group,
+      piecesById,
+      rightDropped,
+      0,
+      playground
+    )
+    const snappedLeftColumn = renderBoundsAt(
+      group,
+      piecesById,
+      rightSnapped.left,
+      rightSnapped.top,
+      (piece) => piece.col === 0
+    )
+    const remainingRightColumn = renderBoundsAt(
+      group,
+      piecesById,
+      rightSnapped.left,
+      rightSnapped.top,
+      (piece) => piece.col === 1
+    )
+    expect(snappedLeftColumn.left + snappedLeftColumn.width).toBeCloseTo(
+      playgroundRight,
+      5
+    )
+    expect(remainingRightColumn.left + remainingRightColumn.width).toBeGreaterThan(
+      playgroundRight
+    )
   })
 })

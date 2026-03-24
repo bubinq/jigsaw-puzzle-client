@@ -764,14 +764,31 @@ export function groupRenderBoundsAt(
   left: number,
   top: number
 ): Rect {
+  const membersWithPieces = group.members.flatMap((member) => {
+    const piece = piecesById.get(member.pieceId)
+    return piece ? [{ member, piece }] : []
+  })
+  return renderBoundsForMembersAt(membersWithPieces, left, top)
+}
+
+type GroupRenderMember = {
+  member: GroupMember
+  piece: PuzzlePiece
+}
+
+type OverflowDirection = "left" | "right" | "top" | "bottom"
+
+function renderBoundsForMembersAt(
+  members: Array<GroupRenderMember>,
+  left: number,
+  top: number
+): Rect {
   let minLeft = Number.POSITIVE_INFINITY
   let minTop = Number.POSITIVE_INFINITY
   let maxRight = Number.NEGATIVE_INFINITY
   let maxBottom = Number.NEGATIVE_INFINITY
 
-  for (const member of group.members) {
-    const piece = piecesById.get(member.pieceId)
-    if (!piece) continue
+  for (const { member, piece } of members) {
     const pieceLeft = left + member.offsetLeft + piece.renderOffsetX
     const pieceTop = top + member.offsetTop + piece.renderOffsetY
     const pieceRight = pieceLeft + piece.renderWidth
@@ -799,6 +816,55 @@ export function groupRenderBoundsAt(
   }
 }
 
+function oppositeEdgeRenderBoundsAt(
+  group: PieceGroup,
+  piecesById: Map<string, PuzzlePiece>,
+  left: number,
+  top: number,
+  overflowDirection: OverflowDirection
+): Rect | null {
+  const membersWithPieces = group.members.flatMap((member) => {
+    const piece = piecesById.get(member.pieceId)
+    return piece ? [{ member, piece }] : []
+  })
+  if (membersWithPieces.length === 0) return null
+
+  let edgeValue: number
+  let isOnOppositeEdge: (piece: PuzzlePiece) => boolean
+
+  if (overflowDirection === "left") {
+    edgeValue = membersWithPieces.reduce(
+      (max, entry) => Math.max(max, entry.piece.col),
+      Number.NEGATIVE_INFINITY
+    )
+    isOnOppositeEdge = (piece) => piece.col === edgeValue
+  } else if (overflowDirection === "right") {
+    edgeValue = membersWithPieces.reduce(
+      (min, entry) => Math.min(min, entry.piece.col),
+      Number.POSITIVE_INFINITY
+    )
+    isOnOppositeEdge = (piece) => piece.col === edgeValue
+  } else if (overflowDirection === "top") {
+    edgeValue = membersWithPieces.reduce(
+      (max, entry) => Math.max(max, entry.piece.row),
+      Number.NEGATIVE_INFINITY
+    )
+    isOnOppositeEdge = (piece) => piece.row === edgeValue
+  } else {
+    edgeValue = membersWithPieces.reduce(
+      (min, entry) => Math.min(min, entry.piece.row),
+      Number.POSITIVE_INFINITY
+    )
+    isOnOppositeEdge = (piece) => piece.row === edgeValue
+  }
+
+  const edgeMembers = membersWithPieces.filter(({ piece }) =>
+    isOnOppositeEdge(piece)
+  )
+  if (edgeMembers.length === 0) return null
+  return renderBoundsForMembersAt(edgeMembers, left, top)
+}
+
 export function clampGroupPositionWithinPlayground(
   group: PieceGroup,
   piecesById: Map<string, PuzzlePiece>,
@@ -807,10 +873,80 @@ export function clampGroupPositionWithinPlayground(
   playgroundRect: Rect
 ): { left: number; top: number } {
   const bounds = groupRenderBoundsAt(group, piecesById, left, top)
-  const maxLeft = playgroundRect.left + playgroundRect.width - bounds.width
-  const maxTop = playgroundRect.top + playgroundRect.height - bounds.height
-  const nextLeft = clamp(left, playgroundRect.left + (left - bounds.left), maxLeft + (left - bounds.left))
-  const nextTop = clamp(top, playgroundRect.top + (top - bounds.top), maxTop + (top - bounds.top))
+  const boundsRight = bounds.left + bounds.width
+  const boundsBottom = bounds.top + bounds.height
+  const playgroundRight = playgroundRect.left + playgroundRect.width
+  const playgroundBottom = playgroundRect.top + playgroundRect.height
+
+  let nextLeft = left
+  let nextTop = top
+
+  if (bounds.left < playgroundRect.left || boundsRight > playgroundRight) {
+    const leftEdgeBounds =
+      bounds.left < playgroundRect.left
+        ? oppositeEdgeRenderBoundsAt(group, piecesById, left, top, "left")
+        : null
+    const rightEdgeBounds =
+      boundsRight > playgroundRight
+        ? oppositeEdgeRenderBoundsAt(group, piecesById, left, top, "right")
+        : null
+
+    const leftThresholdPassed =
+      leftEdgeBounds !== null &&
+      leftEdgeBounds.left + leftEdgeBounds.width / 2 <= playgroundRect.left
+    const rightThresholdPassed =
+      rightEdgeBounds !== null &&
+      rightEdgeBounds.left + rightEdgeBounds.width / 2 >= playgroundRight
+
+    if (leftThresholdPassed && rightThresholdPassed) {
+      const leftPastDistance =
+        playgroundRect.left - (leftEdgeBounds.left + leftEdgeBounds.width / 2)
+      const rightPastDistance =
+        rightEdgeBounds.left + rightEdgeBounds.width / 2 - playgroundRight
+      nextLeft +=
+        leftPastDistance >= rightPastDistance
+          ? playgroundRect.left - leftEdgeBounds.left
+          : playgroundRight - (rightEdgeBounds.left + rightEdgeBounds.width)
+    } else if (leftThresholdPassed) {
+      nextLeft += playgroundRect.left - leftEdgeBounds.left
+    } else if (rightThresholdPassed) {
+      nextLeft += playgroundRight - (rightEdgeBounds.left + rightEdgeBounds.width)
+    }
+  }
+
+  if (bounds.top < playgroundRect.top || boundsBottom > playgroundBottom) {
+    const topEdgeBounds =
+      bounds.top < playgroundRect.top
+        ? oppositeEdgeRenderBoundsAt(group, piecesById, left, top, "top")
+        : null
+    const bottomEdgeBounds =
+      boundsBottom > playgroundBottom
+        ? oppositeEdgeRenderBoundsAt(group, piecesById, left, top, "bottom")
+        : null
+
+    const topThresholdPassed =
+      topEdgeBounds !== null &&
+      topEdgeBounds.top + topEdgeBounds.height / 2 <= playgroundRect.top
+    const bottomThresholdPassed =
+      bottomEdgeBounds !== null &&
+      bottomEdgeBounds.top + bottomEdgeBounds.height / 2 >= playgroundBottom
+
+    if (topThresholdPassed && bottomThresholdPassed) {
+      const topPastDistance =
+        playgroundRect.top - (topEdgeBounds.top + topEdgeBounds.height / 2)
+      const bottomPastDistance =
+        bottomEdgeBounds.top + bottomEdgeBounds.height / 2 - playgroundBottom
+      nextTop +=
+        topPastDistance >= bottomPastDistance
+          ? playgroundRect.top - topEdgeBounds.top
+          : playgroundBottom - (bottomEdgeBounds.top + bottomEdgeBounds.height)
+    } else if (topThresholdPassed) {
+      nextTop += playgroundRect.top - topEdgeBounds.top
+    } else if (bottomThresholdPassed) {
+      nextTop += playgroundBottom - (bottomEdgeBounds.top + bottomEdgeBounds.height)
+    }
+  }
+
   return {
     left: nextLeft,
     top: nextTop,
