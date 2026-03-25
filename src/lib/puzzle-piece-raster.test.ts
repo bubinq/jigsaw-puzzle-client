@@ -32,32 +32,43 @@ describe("puzzle-piece-raster", () => {
       }
     }
 
-    const fakeContext = {
-      save: vi.fn(),
-      clip: vi.fn(),
-      drawImage: vi.fn(),
-      restore: vi.fn(),
-      stroke: vi.fn(),
-      strokeStyle: "",
-      lineWidth: 0,
-    }
-    const fakeCanvas = {
-      width: 0,
-      height: 0,
-      getContext: vi.fn(() => fakeContext),
-      toDataURL: vi.fn(() => {
-        exportCallCount += 1
-        if (exportCallCount === 1) {
-          throw new Error("first_export_fails")
-        }
-        return "data:image/png;base64,ok"
-      }),
+    function makeFakeContext() {
+      return {
+        save: vi.fn(),
+        clip: vi.fn(),
+        drawImage: vi.fn(),
+        restore: vi.fn(),
+        stroke: vi.fn(),
+        strokeStyle: "",
+        lineWidth: 0,
+        filter: "",
+        scale: vi.fn(),
+        translate: vi.fn(),
+        fill: vi.fn(),
+        createLinearGradient: vi.fn(() => ({
+          addColorStop: vi.fn(),
+        })),
+      }
     }
 
     vi.stubGlobal("Image", FakeImage as unknown as typeof Image)
     vi.stubGlobal("Path2D", class {} as typeof Path2D)
     vi.stubGlobal("document", {
-      createElement: vi.fn(() => fakeCanvas),
+      createElement: vi.fn(() => {
+        const fakeContext = makeFakeContext()
+        return {
+          width: 0,
+          height: 0,
+          getContext: vi.fn(() => fakeContext),
+          toDataURL: vi.fn(() => {
+            exportCallCount += 1
+            if (exportCallCount === 1) {
+              throw new Error("first_export_fails")
+            }
+            return "data:image/png;base64,ok"
+          }),
+        }
+      }),
     } as unknown as Document)
 
     const board = { left: 0, top: 0, width: 400, height: 300 }
@@ -89,26 +100,34 @@ describe("puzzle-piece-raster", () => {
       }
     }
 
-    const fakeContext = {
-      save: vi.fn(),
-      clip: vi.fn(),
-      drawImage: vi.fn(),
-      restore: vi.fn(),
-      stroke: vi.fn(),
-      strokeStyle: "",
-      lineWidth: 0,
-    }
-    const fakeCanvas = {
-      width: 0,
-      height: 0,
-      getContext: vi.fn(() => fakeContext),
-      toDataURL: vi.fn(() => "data:image/png;base64,ok"),
+    function makeFakeContext() {
+      return {
+        save: vi.fn(),
+        clip: vi.fn(),
+        drawImage: vi.fn(),
+        restore: vi.fn(),
+        stroke: vi.fn(),
+        strokeStyle: "",
+        lineWidth: 0,
+        filter: "",
+        scale: vi.fn(),
+        translate: vi.fn(),
+        fill: vi.fn(),
+        createLinearGradient: vi.fn(() => ({
+          addColorStop: vi.fn(),
+        })),
+      }
     }
 
     vi.stubGlobal("Image", FakeImage as unknown as typeof Image)
     vi.stubGlobal("Path2D", class {} as typeof Path2D)
     vi.stubGlobal("document", {
-      createElement: vi.fn(() => fakeCanvas),
+      createElement: vi.fn(() => ({
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => makeFakeContext()),
+        toDataURL: vi.fn(() => "data:image/png;base64,ok"),
+      })),
     } as unknown as Document)
 
     const board = { left: 0, top: 0, width: 400, height: 300 }

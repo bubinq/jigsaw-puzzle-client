@@ -178,10 +178,7 @@ export function PuzzlePlayground({
         const pending = pendingPositionRef.current
         const dragState = activeDragRef.current
         if (!pending || !dragState) return
-        // Keep drag rendering on whole pixels to avoid subpixel wobble.
-        const nextLeft = Math.round(pending.left)
-        const nextTop = Math.round(pending.top)
-        applyOverlayPosition({ left: nextLeft, top: nextTop })
+        applyOverlayPosition(pending)
       })
     }
 
@@ -215,9 +212,9 @@ export function PuzzlePlayground({
         offsetX: event.clientX - groupLeft,
         offsetY: event.clientY - groupTop,
       }
-      const roundedStart = { left: Math.round(groupLeft), top: Math.round(groupTop) }
-      pendingPositionRef.current = roundedStart
-      setDragStartPosition(roundedStart)
+      const startPosition = { left: groupLeft, top: groupTop }
+      pendingPositionRef.current = startPosition
+      setDragStartPosition(startPosition)
       setGroups((currentGroups) => bringGroupToFront(currentGroups, groupId))
       setActiveGroupId(groupId)
     },

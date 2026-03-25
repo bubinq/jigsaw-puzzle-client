@@ -1,6 +1,17 @@
 import type { PuzzlePiece, Rect } from "@/lib/puzzle-game"
 
-export const PIECE_BITMAP_PAD = 1
+/** Padding inside the piece bitmap for anti-aliased mask stroke (path origin offset). */
+const PIECE_BITMAP_EDGE_PAD = 2
+/**
+ * Extra margin so the soft drop shadow is not clipped. Total inset from bitmap edge to
+ * piece path (0,0) is EDGE_PAD + this value — must match `puzzle-piece-view`.
+ */
+const PIECE_BITMAP_SHADOW_MARGIN = 12
+
+export const PIECE_BITMAP_PAD = PIECE_BITMAP_EDGE_PAD + PIECE_BITMAP_SHADOW_MARGIN
+
+/** Bump when piece raster drawing (edges, shadow) changes so cached bitmaps regenerate. */
+const PIECE_BITMAP_RENDER_VERSION = 2
 
 const imagePromiseCache = new Map<string, Promise<HTMLImageElement>>()
 const pieceBitmapPromiseCache = new Map<string, Promise<string>>()
@@ -66,6 +77,8 @@ function pieceBitmapCacheKey(piece: PuzzlePiece, imageSrc: string, boardRect: Re
     piece.renderHeight.toFixed(3),
     piece.pathData,
     piece.renderKey,
+    PIECE_BITMAP_PAD.toFixed(0),
+    String(PIECE_BITMAP_RENDER_VERSION),
   ].join("|")
 }
 
@@ -84,21 +97,23 @@ export async function buildPieceBitmapDataUrl(
       typeof window !== "undefined"
         ? Math.max(1, Math.min(3, Math.round(window.devicePixelRatio || 1)))
         : 1
-    const pad = PIECE_BITMAP_PAD
-    const width = Math.max(1, Math.ceil((piece.renderWidth + pad * 2) * rasterScale))
-    const height = Math.max(1, Math.ceil((piece.renderHeight + pad * 2) * rasterScale))
-    const canvas = document.createElement("canvas")
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext("2d")
+    const edgePad = PIECE_BITMAP_EDGE_PAD
+    const shadowMargin = PIECE_BITMAP_SHADOW_MARGIN
+
+    const pieceCanvas = document.createElement("canvas")
+    const pieceLogicalW = piece.renderWidth + edgePad * 2
+    const pieceLogicalH = piece.renderHeight + edgePad * 2
+    pieceCanvas.width = Math.max(1, Math.ceil(pieceLogicalW * rasterScale))
+    pieceCanvas.height = Math.max(1, Math.ceil(pieceLogicalH * rasterScale))
+    const context = pieceCanvas.getContext("2d")
     if (!context) throw new Error("piece_bitmap_no_context")
     context.scale(rasterScale, rasterScale)
-    context.translate(pad, pad)
+    context.translate(edgePad, edgePad)
 
     const path = new Path2D(piece.pathData)
     context.fillStyle = "#fff"
     context.fill(path)
-    context.lineWidth = pad * 2
+    context.lineWidth = edgePad * 2
     context.lineJoin = "round"
     context.strokeStyle = "#fff"
     context.stroke(path)
@@ -113,27 +128,66 @@ export async function buildPieceBitmapDataUrl(
 
     context.globalCompositeOperation = "source-atop"
 
+    const rw = piece.renderWidth
+    const rh = piece.renderHeight
+    const shade = context.createLinearGradient(0, 0, rw, rh)
+    shade.addColorStop(0, "rgba(255, 255, 255, 0.08)")
+    shade.addColorStop(0.42, "rgba(255, 255, 255, 0.03)")
+    shade.addColorStop(1, "rgba(0, 0, 0, 0.06)")
+    context.fillStyle = shade
+    context.fill(path)
+
+    // Inner shadow (light from top-left → darker bottom-right inner edge)
     context.save()
-    context.lineWidth = 1.5
+    context.clip(path)
     context.lineJoin = "round"
-    context.strokeStyle = "rgba(0, 0, 0, 0.38)"
-    context.shadowColor = "rgba(0, 0, 0, 0.25)"
-    context.shadowBlur = 4
-    context.shadowOffsetX = 0.5
-    context.shadowOffsetY = 0.5
+    context.lineWidth = 3
+    context.strokeStyle = "rgba(0, 0, 0, 0.25)"
+    context.shadowColor = "rgba(0, 0, 0, 0.4)"
+    context.shadowBlur = 2
+    context.shadowOffsetX = 1
+    context.shadowOffsetY = 1
     context.stroke(path)
     context.restore()
 
+    // Inner highlight (top-left edge catch)
     context.save()
-    context.lineWidth = 0.8
+    context.clip(path)
     context.lineJoin = "round"
-    context.strokeStyle = "rgba(255, 255, 255, 0.05)"
-    context.shadowColor = "rgba(255, 255, 255, 0.03)"
+    context.lineWidth = 2.5
+    context.strokeStyle = "rgba(255, 255, 255, 0.15)"
+    context.shadowColor = "rgba(255, 255, 255, 0.35)"
     context.shadowBlur = 1.5
-    context.shadowOffsetX = -0.5
-    context.shadowOffsetY = -0.5
+    context.shadowOffsetX = -0.8
+    context.shadowOffsetY = -0.8
     context.stroke(path)
     context.restore()
+
+    // Thin edge definition (no shadow blur)
+    context.save()
+    context.lineJoin = "round"
+    context.lineWidth = 1
+    context.strokeStyle = "rgba(0, 0, 0, 0.3)"
+    context.shadowBlur = 0
+    context.shadowColor = "transparent"
+    context.shadowOffsetX = 0
+    context.shadowOffsetY = 0
+    context.stroke(path)
+    context.restore()
+
+    const outW = Math.max(1, Math.ceil((piece.renderWidth + edgePad * 2 + shadowMargin * 2) * rasterScale))
+    const outH = Math.max(1, Math.ceil((piece.renderHeight + edgePad * 2 + shadowMargin * 2) * rasterScale))
+    const canvas = document.createElement("canvas")
+    canvas.width = outW
+    canvas.height = outH
+    const out = canvas.getContext("2d")
+    if (!out) throw new Error("piece_bitmap_no_context")
+    out.scale(rasterScale, rasterScale)
+    out.shadowColor = "rgba(0, 0, 0, 0.3)"
+    out.shadowBlur = 5
+    out.shadowOffsetX = 1.5
+    out.shadowOffsetY = 2
+    out.drawImage(pieceCanvas, shadowMargin, shadowMargin)
 
     return canvas.toDataURL("image/png")
   })().catch((error) => {

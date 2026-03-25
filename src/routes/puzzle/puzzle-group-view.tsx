@@ -41,8 +41,7 @@ export const PuzzleGroupView = React.memo(function ({
       ref={groupRef}
       className="absolute touch-none"
       style={{
-        left,
-        top,
+        transform: `translate3d(${left}px, ${top}px, 0)`,
         zIndex: isActive ? stackOrder + 1 : stackOrder,
         willChange: isDragging ? "transform, filter" : undefined,
         visibility: hidden ? "hidden" : "visible",
