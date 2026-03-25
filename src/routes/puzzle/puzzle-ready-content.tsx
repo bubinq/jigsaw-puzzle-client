@@ -1,7 +1,9 @@
 import * as React from "react"
+import { RotateCcw } from "lucide-react"
 import { PuzzlePlayground } from "./puzzle-playground"
 import type { CreatePuzzleResponse } from "@/lib/api/types"
 import type { PieceGroup, PuzzleGameImage, PuzzlePiece, Rect } from "@/lib/puzzle-game"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
 type PuzzleResponse = CreatePuzzleResponse
@@ -18,6 +20,8 @@ export type PuzzleReadyContentProps = {
   playgroundRect: Rect
   solved: boolean
   onSolved: () => void
+  onReset: () => void
+  onDrop: (nextGroups: Array<PieceGroup>, nextSolved: boolean) => void
 }
 
 export function PuzzleReadyContent({
@@ -32,6 +36,8 @@ export function PuzzleReadyContent({
   playgroundRect,
   solved,
   onSolved,
+  onReset,
+  onDrop,
 }: PuzzleReadyContentProps) {
   return (
     <Card className="w-full overflow-hidden rounded-none border-x-0">
@@ -50,7 +56,21 @@ export function PuzzleReadyContent({
           image={image}
           solved={solved}
           onSolved={onSolved}
+          onDrop={onDrop}
         />
+        <div className="flex items-center justify-start border-t bg-muted/40 px-4 py-2.5">
+          <Button
+            type="button"
+            variant="outline"
+            className="border-none"
+            size="icon-sm"
+            onClick={onReset}
+            aria-label="Reset puzzle"
+            title="Reset puzzle"
+          >
+            <RotateCcw />
+          </Button>
+        </div>
       </CardContent>
     </Card>
   )

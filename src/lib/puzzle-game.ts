@@ -388,9 +388,11 @@ function defaultEdgeProfile(): EdgeProfile {
 
 function edgeProfileFromSeed(seed: number): EdgeProfile {
   const random = mulberry32(seed)
+  const neckStart = 0.34 + random() * 0.04
+  random()
   return {
-    neckStart: 0.34 + random() * 0.04,
-    neckEnd: 0.62 + random() * 0.04,
+    neckStart,
+    neckEnd: 1 - neckStart,
     shoulderPull: 0.045 + random() * 0.02,
     headPull: 0.14 + random() * 0.045,
     ampScale: 0.92 + random() * 0.18,
@@ -527,11 +529,21 @@ export function currentRelativeDelta(a: PuzzlePiece, b: PuzzlePiece): RelativeDe
 export function isDeltaWithinThreshold(
   current: RelativeDelta,
   expected: RelativeDelta,
-  threshold: number
+  threshold: number,
+  direction?: NeighborDirection
 ): boolean {
-  const dx = current.dx - expected.dx
-  const dy = current.dy - expected.dy
-  return Math.hypot(dx, dy) <= Math.max(0, threshold)
+  const maxDelta = Math.max(0, threshold)
+  const dxDelta = Math.abs(current.dx - expected.dx)
+  const dyDelta = Math.abs(current.dy - expected.dy)
+  if (!direction) {
+    return Math.hypot(dxDelta, dyDelta) <= maxDelta
+  }
+
+  const normalAxisTolerance = Math.max(0.5, Math.min(maxDelta, maxDelta * 0.35))
+  if (direction === "left" || direction === "right") {
+    return dxDelta <= maxDelta && dyDelta <= normalAxisTolerance
+  }
+  return dyDelta <= maxDelta && dxDelta <= normalAxisTolerance
 }
 
 export function arePiecesMatching(a: PuzzlePiece, b: PuzzlePiece, threshold: number): boolean {
@@ -539,7 +551,7 @@ export function arePiecesMatching(a: PuzzlePiece, b: PuzzlePiece, threshold: num
   if (!direction) return false
   const expected = expectedRelativeDelta(a, b)
   const current = currentRelativeDelta(a, b)
-  return isDeltaWithinThreshold(current, expected, threshold)
+  return isDeltaWithinThreshold(current, expected, threshold, direction)
 }
 
 export function listAdjacentPairs(pieces: Array<PuzzlePiece>): Array<AdjacentPair> {
@@ -679,12 +691,14 @@ export function findMergeCandidate(
 
       const bLeft = targetGroup.left + memberB.offsetLeft
       const bTop = targetGroup.top + memberB.offsetTop
+      const direction = getPieceNeighborDirection(pieceA, pieceB)
+      if (!direction) continue
       const expected = expectedRelativeDelta(pieceA, pieceB)
       const current = {
         dx: bLeft - aLeft,
         dy: bTop - aTop,
       }
-      if (!isDeltaWithinThreshold(current, expected, threshold)) continue
+      if (!isDeltaWithinThreshold(current, expected, threshold, direction)) continue
 
       const snapLeft = bLeft - expected.dx - memberA.offsetLeft
       const snapTop = bTop - expected.dy - memberA.offsetTop
@@ -694,15 +708,36 @@ export function findMergeCandidate(
 
   if (candidates.length === 0) return null
 
-  const tol = 0.5
+  const targetGroupIds = new Set(candidates.map((c) => c.targetGroupId))
+  if (targetGroupIds.size !== 1) return null
+
+  const snapConsistencyTolerance = Math.max(0.5, Math.min(1.5, threshold * 0.3))
+  const snapLeftValues = candidates.map((c) => c.snapLeft)
+  const snapTopValues = candidates.map((c) => c.snapTop)
+  const leftSpread = Math.max(...snapLeftValues) - Math.min(...snapLeftValues)
+  const topSpread = Math.max(...snapTopValues) - Math.min(...snapTopValues)
+
+  if (leftSpread > snapConsistencyTolerance || topSpread > snapConsistencyTolerance) {
+    return null
+  }
+
   const first = candidates[0]
-  const allSame = candidates.every(
-    (c) =>
-      c.targetGroupId === first.targetGroupId &&
-      Math.abs(c.snapLeft - first.snapLeft) <= tol &&
-      Math.abs(c.snapTop - first.snapTop) <= tol
-  )
-  return allSame ? first : null
+  const snapAnchor = candidates.reduce((best, candidate) => {
+    if (!best) return candidate
+    const bestDistance =
+      (best.snapLeft - draggedGroupLeft) * (best.snapLeft - draggedGroupLeft) +
+      (best.snapTop - draggedGroupTop) * (best.snapTop - draggedGroupTop)
+    const candidateDistance =
+      (candidate.snapLeft - draggedGroupLeft) * (candidate.snapLeft - draggedGroupLeft) +
+      (candidate.snapTop - draggedGroupTop) * (candidate.snapTop - draggedGroupTop)
+    return candidateDistance < bestDistance ? candidate : best
+  }, null as MergeCandidate | null)
+  if (!snapAnchor) return null
+  return {
+    targetGroupId: first.targetGroupId,
+    snapLeft: snapAnchor.snapLeft,
+    snapTop: snapAnchor.snapTop,
+  }
 }
 
 /**

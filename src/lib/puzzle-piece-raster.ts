@@ -1,5 +1,7 @@
 import type { PuzzlePiece, Rect } from "@/lib/puzzle-game"
 
+export const PIECE_BITMAP_PAD = 1
+
 const imagePromiseCache = new Map<string, Promise<HTMLImageElement>>()
 const pieceBitmapPromiseCache = new Map<string, Promise<string>>()
 
@@ -78,17 +80,29 @@ export async function buildPieceBitmapDataUrl(
 
   const promise = (async () => {
     const image = await loadImage(imageSrc)
-    const width = Math.max(1, Math.ceil(piece.renderWidth))
-    const height = Math.max(1, Math.ceil(piece.renderHeight))
+    const rasterScale =
+      typeof window !== "undefined"
+        ? Math.max(1, Math.min(3, Math.round(window.devicePixelRatio || 1)))
+        : 1
+    const pad = PIECE_BITMAP_PAD
+    const width = Math.max(1, Math.ceil((piece.renderWidth + pad * 2) * rasterScale))
+    const height = Math.max(1, Math.ceil((piece.renderHeight + pad * 2) * rasterScale))
     const canvas = document.createElement("canvas")
     canvas.width = width
     canvas.height = height
     const context = canvas.getContext("2d")
     if (!context) throw new Error("piece_bitmap_no_context")
+    context.scale(rasterScale, rasterScale)
+    context.translate(pad, pad)
 
     const path = new Path2D(piece.pathData)
-    context.save()
-    context.clip(path)
+    context.fillStyle = "#fff"
+    context.fill(path)
+    context.lineWidth = pad * 2
+    context.lineJoin = "round"
+    context.strokeStyle = "#fff"
+    context.stroke(path)
+    context.globalCompositeOperation = "source-in"
     context.drawImage(
       image,
       piece.imageOffsetX,
@@ -96,15 +110,31 @@ export async function buildPieceBitmapDataUrl(
       boardRect.width,
       boardRect.height
     )
-    context.restore()
+
+    context.globalCompositeOperation = "source-atop"
+
     context.save()
-    context.strokeStyle = "rgb(255 255 255 / 0.7)"
-    context.lineWidth = 1
-    context.stroke(path)
-    context.strokeStyle = "rgb(0 0 0 / 0.45)"
-    context.lineWidth = 0.8
+    context.lineWidth = 1.5
+    context.lineJoin = "round"
+    context.strokeStyle = "rgba(0, 0, 0, 0.38)"
+    context.shadowColor = "rgba(0, 0, 0, 0.25)"
+    context.shadowBlur = 4
+    context.shadowOffsetX = 0.5
+    context.shadowOffsetY = 0.5
     context.stroke(path)
     context.restore()
+
+    context.save()
+    context.lineWidth = 0.8
+    context.lineJoin = "round"
+    context.strokeStyle = "rgba(255, 255, 255, 0.05)"
+    context.shadowColor = "rgba(255, 255, 255, 0.03)"
+    context.shadowBlur = 1.5
+    context.shadowOffsetX = -0.5
+    context.shadowOffsetY = -0.5
+    context.stroke(path)
+    context.restore()
+
     return canvas.toDataURL("image/png")
   })().catch((error) => {
     pieceBitmapPromiseCache.delete(key)

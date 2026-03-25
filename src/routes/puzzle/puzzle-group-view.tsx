@@ -44,9 +44,12 @@ export const PuzzleGroupView = React.memo(function ({
         left,
         top,
         zIndex: isActive ? stackOrder + 1 : stackOrder,
-        willChange: isDragging ? "transform" : undefined,
+        willChange: isDragging ? "transform, filter" : undefined,
         visibility: hidden ? "hidden" : "visible",
         pointerEvents: interactive ? "auto" : "none",
+        filter: isDragging
+          ? "drop-shadow(0 6px 10px rgb(0 0 0 / 0.55)) drop-shadow(0 0 3px rgb(255 255 255 / 0.5))"
+          : undefined,
       }}
       onPointerDown={(event) => {
         if (!interactive) return

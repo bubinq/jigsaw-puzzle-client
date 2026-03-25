@@ -44,7 +44,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
             <AuthProvider>
               <div className="min-h-svh">
                 <Navbar />
-                <main className="mx-auto max-w-5xl p-4">{children}</main>
+                <main className="mx-auto max-w-5xl px-4">{children}</main>
               </div>
             </AuthProvider>
           </SoundPreferencesProvider>

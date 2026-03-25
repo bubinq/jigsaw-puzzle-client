@@ -243,6 +243,13 @@ describe("matching helpers", () => {
     expect(arePiecesMatching(movedTop, movedBottom, 0.5)).toBe(false)
   })
 
+  it("rejects horizontal matches with visible perpendicular gaps", () => {
+    const [a, b] = buildPuzzlePieces(2, 2, { left: 0, top: 0, width: 200, height: 200 })
+    const movedA = { ...a, left: 300, top: 220 }
+    const movedB = { ...b, left: 304, top: 224 }
+    expect(arePiecesMatching(movedA, movedB, 6)).toBe(false)
+  })
+
   it("never matches diagonal neighbors", () => {
     const pieces = buildPuzzlePieces(3, 3, { left: 0, top: 0, width: 300, height: 300 })
     const topLeft = pieces[0]
@@ -358,6 +365,41 @@ describe("group merge helpers", () => {
     )
     const candidate = findMergeCandidate("ga", 50, 50, groups, piecesWithGroups, 100)
     expect(candidate).toBe(null)
+  })
+
+  it("findMergeCandidate tolerates small snap drift from multiple matches", () => {
+    const pieces = buildPuzzlePieces(1, 3, { left: 0, top: 0, width: 300, height: 100 })
+    const [leftPiece, middlePiece, rightPiece] = pieces
+    const groups = [
+      {
+        id: "ga",
+        left: 100,
+        top: 50,
+        stackOrder: 1,
+        members: [
+          { pieceId: leftPiece.id, offsetLeft: 0, offsetTop: 0 },
+          { pieceId: rightPiece.id, offsetLeft: 199.4, offsetTop: 0 },
+        ],
+      },
+      {
+        id: "gb",
+        left: 200,
+        top: 50,
+        stackOrder: 2,
+        members: [{ pieceId: middlePiece.id, offsetLeft: 0, offsetTop: 0 }],
+      },
+    ]
+    const piecesWithGroups = pieces.map((piece) =>
+      piece.id === middlePiece.id
+        ? { ...piece, groupId: "gb" }
+        : { ...piece, groupId: "ga" }
+    )
+
+    const candidate = findMergeCandidate("ga", 100, 50, groups, piecesWithGroups, 6)
+    expect(candidate).toBeDefined()
+    expect(candidate?.targetGroupId).toBe("gb")
+    expect(candidate?.snapLeft).toBeCloseTo(100, 6)
+    expect(candidate?.snapTop).toBeCloseTo(50, 6)
   })
 
   it("mergeGroups combines two groups and syncs piece positions", () => {

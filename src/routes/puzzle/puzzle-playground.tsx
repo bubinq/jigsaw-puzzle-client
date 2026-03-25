@@ -29,6 +29,7 @@ export type PuzzlePlaygroundProps = {
   image: PuzzleGameImage
   solved: boolean
   onSolved: () => void
+  onDrop: (nextGroups: Array<PieceGroup>, nextSolved: boolean) => void
 }
 
 type Point = {
@@ -53,6 +54,7 @@ export function PuzzlePlayground({
   image,
   solved,
   onSolved,
+  onDrop,
 }: PuzzlePlaygroundProps) {
   const { pieceMatchSoundEnabled } = useSoundPreferences()
   const pieceMap = React.useMemo(() => pieceByIdMap(pieces), [pieces])
@@ -123,20 +125,13 @@ export function PuzzlePlayground({
     let nextGroups: Array<PieceGroup>
     let nextPieces: Array<PuzzlePiece>
     if (candidate) {
-      const snappedPosition = clampGroupPositionWithinPlayground(
-        activeGroup,
-        pieceMap,
-        candidate.snapLeft,
-        candidate.snapTop,
-        playgroundRect
-      )
       const result = mergeGroups(
         groups,
         pieces,
         activeDrag.groupId,
         candidate.targetGroupId,
-        snappedPosition.left,
-        snappedPosition.top
+        candidate.snapLeft,
+        candidate.snapTop
       )
       nextGroups = result.groups
       nextPieces = result.pieces
@@ -153,12 +148,13 @@ export function PuzzlePlayground({
 
     setGroups(nextGroups)
     setPieces(nextPieces)
+    onDrop(nextGroups, isPuzzleSolved(nextPieces, MATCH_THRESHOLD))
 
     activeDragRef.current = null
     pendingPositionRef.current = null
     setActiveGroupId(null)
     setDragStartPosition(null)
-  }, [groups, pieceMap, pieces, playMergeSound, playgroundRect, setGroups, setPieces])
+  }, [groups, onDrop, pieceMap, pieces, playMergeSound, playgroundRect, setGroups, setPieces])
 
   React.useEffect(() => {
     if (solved) return
